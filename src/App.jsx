@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { 
   Box, 
   Container, 
@@ -22,6 +22,7 @@ import { CloudUpload, Download, Refresh } from '@mui/icons-material'
 import * as XLSX from 'xlsx'
 import axios from 'axios'
 import JSZip from 'jszip'
+import { marked } from 'marked'
 
 function App() {
   const [file, setFile] = useState(null)
@@ -32,8 +33,17 @@ function App() {
   const [useZip, setUseZip] = useState(false)
   const [fileProgress, setFileProgress] = useState({})
   const [downloadedCount, setDownloadedCount] = useState(0)
+  const [blogContent, setBlogContent] = useState('')
   const downloadedUrlsRef = useRef(new Set())
   const progressRef = useRef(0)
+
+  useEffect(() => {
+    // Fetch blog content when component mounts
+    fetch('/blog.txt')
+      .then(response => response.text())
+      .then(text => setBlogContent(text))
+      .catch(error => console.error('Error fetching blog:', error))
+  }, [])
 
   const handleFileUpload = (event) => {
     const uploadedFile = event.target.files[0]
@@ -223,6 +233,7 @@ function App() {
 
       <Container maxWidth="md">
         <Box sx={{ my: 4 }}>
+
           <Paper sx={{ p: 3, mb: 3 }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
               <input
@@ -328,6 +339,22 @@ function App() {
             </Paper>
           )}
         </Box>
+        {/* Blog Content Section */}
+        {!file && (
+            <Paper sx={{ p: 3, mb: 3 }}>
+              <Box 
+                sx={{ 
+                  '& h1': { fontSize: '2rem', mb: 2 },
+                  '& h2': { fontSize: '1.5rem', mt: 3, mb: 2 },
+                  '& h3': { fontSize: '1.25rem', mt: 2, mb: 1 },
+                  '& p': { mb: 2 },
+                  '& ul': { pl: 3, mb: 2 },
+                  '& li': { mb: 1 }
+                }}
+                dangerouslySetInnerHTML={{ __html: marked(blogContent) }}
+              />
+            </Paper>
+        )}
       </Container>
     </Box>
   )

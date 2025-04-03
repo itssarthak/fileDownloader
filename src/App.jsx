@@ -100,6 +100,7 @@ function App() {
     setDownloadedCount(0)
     const allErrors = []
     const zip = useZip ? new JSZip() : null
+    const filenameCount = {} // Track filename occurrences
 
     // Filter out already downloaded URLs
     const urlsToDownload = urls.filter(url => !downloadedUrlsRef.current.has(url))
@@ -116,7 +117,21 @@ function App() {
             downloadedUrlsRef.current.add(url)
             setDownloadedCount(prev => prev + 1)
             if (useZip) {
-              zip.file(result.filename, result.blob)
+              // Handle duplicate filenames
+              const originalFilename = result.filename
+              const extension = originalFilename.split('.').pop()
+              const baseName = originalFilename.slice(0, -(extension.length + 1))
+              
+              // Initialize or increment counter for this filename
+              filenameCount[originalFilename] = (filenameCount[originalFilename] || 0) + 1
+              const count = filenameCount[originalFilename]
+              
+              // Create unique filename if it's a duplicate
+              const uniqueFilename = count > 1 
+                ? `${baseName}_${count}.${extension}`
+                : originalFilename
+              
+              zip.file(uniqueFilename, result.blob)
             } else {
               // Download individual file
               const blob = new Blob([result.blob])

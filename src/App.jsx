@@ -15,7 +15,8 @@ import {
   IconButton,
   Tooltip,
   FormControlLabel,
-  Checkbox
+  Checkbox,
+  LinearProgress
 } from '@mui/material'
 import { CloudUpload, Download, Refresh } from '@mui/icons-material'
 import * as XLSX from 'xlsx'
@@ -29,6 +30,8 @@ function App() {
   const [downloading, setDownloading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [useZip, setUseZip] = useState(false)
+  const [fileProgress, setFileProgress] = useState({})
+  const [downloadedCount, setDownloadedCount] = useState(0)
   const downloadedUrlsRef = useRef(new Set())
   const progressRef = useRef(0)
 
@@ -75,7 +78,13 @@ function App() {
 
   const downloadFile = async (url) => {
     try {
-      const response = await axios.get(url, { responseType: 'blob' })
+      const response = await axios.get(url, { 
+        responseType: 'blob',
+        onDownloadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          setFileProgress(prev => ({ ...prev, [url]: percentCompleted }))
+        }
+      })
       const filename = url.split('/').pop()
       return { blob: response.data, filename }
     } catch (error) {
@@ -87,6 +96,8 @@ function App() {
   const handleDownloadAll = async () => {
     setDownloading(true)
     setErrors([])
+    setFileProgress({})
+    setDownloadedCount(0)
     const allErrors = []
     const zip = useZip ? new JSZip() : null
 
@@ -96,25 +107,32 @@ function App() {
     if (urlsToDownload.length > 0) {
       // Create an array of promises for parallel downloads
       const downloadPromises = urlsToDownload.map(async (url) => {
-        const result = await downloadFile(url)
-        if (!result) {
-          allErrors.push(url)
-        } else {
-          downloadedUrlsRef.current.add(url)
-          if (useZip) {
-            zip.file(result.filename, result.blob)
+        try {
+          setFileProgress(prev => ({ ...prev, [url]: 0 }))
+          const result = await downloadFile(url)
+          if (!result) {
+            allErrors.push(url)
           } else {
-            // Download individual file
-            const blob = new Blob([result.blob])
-            const downloadUrl = window.URL.createObjectURL(blob)
-            const link = document.createElement('a')
-            link.href = downloadUrl
-            link.download = result.filename
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-            window.URL.revokeObjectURL(downloadUrl)
+            downloadedUrlsRef.current.add(url)
+            setDownloadedCount(prev => prev + 1)
+            if (useZip) {
+              zip.file(result.filename, result.blob)
+            } else {
+              // Download individual file
+              const blob = new Blob([result.blob])
+              const downloadUrl = window.URL.createObjectURL(blob)
+              const link = document.createElement('a')
+              link.href = downloadUrl
+              link.download = result.filename
+              document.body.appendChild(link)
+              link.click()
+              document.body.removeChild(link)
+              window.URL.revokeObjectURL(downloadUrl)
+            }
           }
+        } catch (error) {
+          allErrors.push(url)
+          setFileProgress(prev => ({ ...prev, [url]: 0 }))
         }
         progressRef.current++
         setProgress((progressRef.current / urls.length) * 100)
@@ -148,6 +166,8 @@ function App() {
     setUrls([])
     setFile(null)
     setUseZip(false)
+    setFileProgress({})
+    setDownloadedCount(0)
     downloadedUrlsRef.current = new Set()
     progressRef.current = 0
   }
@@ -216,34 +236,63 @@ function App() {
 
           {urls.length > 0 && (
             <Paper sx={{ p: 3, mb: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Found URLs ({urls.length})
-              </Typography>
-              <FormControlLabel
-                control={
-                  <Checkbox
-                    checked={useZip}
-                    onChange={(e) => setUseZip(e.target.checked)}
-                    color="primary"
-                  />
-                }
-                label="Download as ZIP file"
-              />
-              <List>
-                {urls.map((url, index) => (
-                  <ListItem key={index}>
-                    <ListItemText primary={url} />
-                  </ListItem>
-                ))}
-              </List>
+              {
+                !downloading && (
+                <Box>
+                    <Typography variant="h6" gutterBottom>
+                    Found URLs ({urls.length})
+                    </Typography>
+                    <FormControlLabel
+                        control={
+                        <Checkbox
+                            checked={useZip}
+                            onChange={(e) => setUseZip(e.target.checked)}
+                            color="primary"
+                        />
+                        }
+                        label="Download as ZIP file"
+                    />
+                </Box>
+              )}
               {downloading && (
-                <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
                   <CircularProgress variant="determinate" value={progress} />
-                  <Typography variant="body2" sx={{ ml: 1 }}>
-                    {Math.round(progress)}%
+                  <Typography variant="body2">
+                    {Math.round(progress)}% Complete
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Downloaded {downloadedCount} of {urls.length} files
                   </Typography>
                 </Box>
               )}
+              <List>
+                {urls.sort((a,b) => {
+                    // sort the list by progress
+                    const progressA = fileProgress[a] || 0
+                    const progressB = fileProgress[b] || 0
+                    return progressB - progressA
+                }).map((url, index) => (
+                  <ListItem key={index}>
+                    <ListItemText 
+                      primary={url}
+                      secondary={
+                        downloading && (
+                          <Box sx={{ width: '100%', mt: 1 }}>
+                            <LinearProgress 
+                              variant="determinate" 
+                              value={fileProgress[url] || 0}
+                              sx={{ height: 6, borderRadius: 3 }}
+                            />
+                          </Box>
+                        )
+                      }
+                    />
+                    <Typography variant="body2" color="text.secondary">
+                      {fileProgress[url] || 0}%
+                    </Typography>
+                  </ListItem>
+                ))} 
+              </List>
             </Paper>
           )}
 

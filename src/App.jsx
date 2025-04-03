@@ -23,6 +23,10 @@ import * as XLSX from 'xlsx'
 import axios from 'axios'
 import JSZip from 'jszip'
 import { marked } from 'marked'
+import { initGA, trackPageView, trackFileUpload, trackUrlExtraction, trackDownload, trackBatchDownload, trackError, trackUserInteraction } from './utils/analytics'
+
+// Initialize Google Analytics with your measurement ID
+const GA_MEASUREMENT_ID = 'G-3EMKW9KYM5'
 
 function App() {
   const [file, setFile] = useState(null)
@@ -38,6 +42,11 @@ function App() {
   const progressRef = useRef(0)
 
   useEffect(() => {
+    // Initialize Google Analytics
+    initGA(GA_MEASUREMENT_ID)
+    // Track initial page view
+    trackPageView(window.location.pathname)
+
     // Fetch blog content when component mounts
     fetch('/blog.txt')
       .then(response => response.text())
@@ -55,6 +64,9 @@ function App() {
     progressRef.current = 0
 
     if (uploadedFile) {
+      // Track file upload attempt
+      trackFileUpload(uploadedFile.type, uploadedFile.size, true)
+      
       const reader = new FileReader()
       reader.onload = (e) => {
         try {
@@ -64,7 +76,7 @@ function App() {
           const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
           
           // Extract URLs from the data and remove duplicates using Set
-          const uniqueUrls = [...new Set(jsonData.flat().filter(cell => {
+          const allUrls = jsonData.flat().filter(cell => {
             if (typeof cell === 'string') {
               try {
                 new URL(cell)
@@ -74,12 +86,17 @@ function App() {
               }
             }
             return false
-          }))]
+          })
           
+          const uniqueUrls = [...new Set(allUrls)]
           setUrls(uniqueUrls)
+          
+          // Track URL extraction
+          trackUrlExtraction(allUrls.length, uniqueUrls.length)
         } catch (error) {
           console.error('File reading error:', error)
           setErrors(['Error reading file. Please make sure it\'s a valid Excel/CSV file.'])
+          trackError('file_reading', error.message, 'handleFileUpload')
         }
       }
       reader.readAsArrayBuffer(uploadedFile)
@@ -87,6 +104,7 @@ function App() {
   }
 
   const downloadFile = async (url) => {
+    const startTime = Date.now()
     try {
       const response = await axios.get(url, { 
         responseType: 'blob',
@@ -96,21 +114,32 @@ function App() {
         }
       })
       const filename = url.split('/').pop()
+      const downloadTime = Date.now() - startTime
+      
+      // Track successful download
+      trackDownload(url, true, response.data.size, downloadTime)
+      
       return { blob: response.data, filename }
     } catch (error) {
       console.error('Download error:', error)
+      // Track failed download
+      trackDownload(url, false, 0, Date.now() - startTime)
       return null
     }
   }
 
   const handleDownloadAll = async () => {
+    const startTime = Date.now()
     setDownloading(true)
     setErrors([])
     setFileProgress({})
     setDownloadedCount(0)
     const allErrors = []
     const zip = useZip ? new JSZip() : null
-    const filenameCount = {} // Track filename occurrences
+    const filenameCount = {}
+
+    // Track batch download start
+    trackUserInteraction('start_batch_download', 'download', useZip ? 'zip' : 'individual')
 
     // Filter out already downloaded URLs
     const urlsToDownload = urls.filter(url => !downloadedUrlsRef.current.has(url))
@@ -181,11 +210,22 @@ function App() {
       }
     }
 
+    // After all downloads complete
+    const totalTime = Date.now() - startTime
+    trackBatchDownload(
+      urlsToDownload.length,
+      urlsToDownload.length - allErrors.length,
+      allErrors.length,
+      useZip,
+      totalTime
+    )
+
     setErrors(allErrors)
     setDownloading(false)
   }
 
   const handleReset = () => {
+    trackUserInteraction('reset', 'action', 'reset_all')
     setProgress(0)
     setErrors([])
     setUrls([])

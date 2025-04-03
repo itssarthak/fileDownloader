@@ -13,11 +13,14 @@ import {
   AppBar,
   Toolbar,
   IconButton,
-  Tooltip
+  Tooltip,
+  FormControlLabel,
+  Checkbox
 } from '@mui/material'
 import { CloudUpload, Download, Refresh } from '@mui/icons-material'
 import * as XLSX from 'xlsx'
 import axios from 'axios'
+import JSZip from 'jszip'
 
 function App() {
   const [file, setFile] = useState(null)
@@ -25,6 +28,7 @@ function App() {
   const [errors, setErrors] = useState([])
   const [downloading, setDownloading] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [useZip, setUseZip] = useState(false)
   const downloadedUrlsRef = useRef(new Set())
   const progressRef = useRef(0)
 
@@ -73,19 +77,10 @@ function App() {
     try {
       const response = await axios.get(url, { responseType: 'blob' })
       const filename = url.split('/').pop()
-      const blob = new Blob([response.data])
-      const downloadUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = downloadUrl
-      link.download = filename
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(downloadUrl)
-      return true
+      return { blob: response.data, filename }
     } catch (error) {
       console.error('Download error:', error)
-      return false
+      return null
     }
   }
 
@@ -93,6 +88,7 @@ function App() {
     setDownloading(true)
     setErrors([])
     const allErrors = []
+    const zip = useZip ? new JSZip() : null
 
     // Filter out already downloaded URLs
     const urlsToDownload = urls.filter(url => !downloadedUrlsRef.current.has(url))
@@ -100,11 +96,25 @@ function App() {
     if (urlsToDownload.length > 0) {
       // Create an array of promises for parallel downloads
       const downloadPromises = urlsToDownload.map(async (url) => {
-        const success = await downloadFile(url)
-        if (!success) {
+        const result = await downloadFile(url)
+        if (!result) {
           allErrors.push(url)
         } else {
           downloadedUrlsRef.current.add(url)
+          if (useZip) {
+            zip.file(result.filename, result.blob)
+          } else {
+            // Download individual file
+            const blob = new Blob([result.blob])
+            const downloadUrl = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = downloadUrl
+            link.download = result.filename
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(downloadUrl)
+          }
         }
         progressRef.current++
         setProgress((progressRef.current / urls.length) * 100)
@@ -112,6 +122,20 @@ function App() {
 
       // Wait for all downloads to complete
       await Promise.all(downloadPromises)
+
+      // If using zip, generate and download the zip file
+      if (useZip) {
+        const zipBlob = await zip.generateAsync({ type: 'blob' })
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const zipUrl = window.URL.createObjectURL(zipBlob)
+        const link = document.createElement('a')
+        link.href = zipUrl
+        link.download = `filedownloader.in_${timestamp}.zip`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(zipUrl)
+      }
     }
 
     setErrors(allErrors)
@@ -123,6 +147,7 @@ function App() {
     setErrors([])
     setUrls([])
     setFile(null)
+    setUseZip(false)
     downloadedUrlsRef.current = new Set()
     progressRef.current = 0
   }
@@ -152,7 +177,9 @@ function App() {
                 disabled={downloading}
                 startIcon={downloading ? <CircularProgress size={20} /> : <Download />}
               >
-                {downloading ? 'Downloading...' + (progress ? ` ${progress.toFixed(0)}%` : '') : `Download all files (${urls.length})` }
+                {downloading 
+                  ? `Downloading...${progress ? ` ${progress.toFixed(0)}%` : ''}` 
+                  : `${useZip ? 'Download as ZIP' : 'Download all files'} (${urls.length})`}
               </Button>
             </Box>
           )}
@@ -192,6 +219,16 @@ function App() {
               <Typography variant="h6" gutterBottom>
                 Found URLs ({urls.length})
               </Typography>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={useZip}
+                    onChange={(e) => setUseZip(e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Download as ZIP file"
+              />
               <List>
                 {urls.map((url, index) => (
                   <ListItem key={index}>

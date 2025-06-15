@@ -322,7 +322,7 @@ function App() {
                   component="span"
                   startIcon={<CloudUpload />}
                 >
-                  Upload Excel/CSV File
+                  Select Excel/CSV File
                 </Button>
               </label>
               {file && (

@@ -38,6 +38,8 @@ function App() {
   const [fileProgress, setFileProgress] = useState({})
   const [downloadedCount, setDownloadedCount] = useState(0)
   const [blogContent, setBlogContent] = useState('')
+  const [manualUrls, setManualUrls] = useState('')
+  const [mergedUrls, setMergedUrls] = useState([])
   const downloadedUrlsRef = useRef(new Set())
   const progressRef = useRef(0)
 
@@ -53,6 +55,14 @@ function App() {
       .then(text => setBlogContent(text))
       .catch(error => console.error('Error fetching blog:', error))
   }, [])
+
+  useEffect(() => {
+    // Update merged URLs whenever urls or manualUrls change
+    setMergedUrls(Array.from(new Set([
+      ...urls,  
+      ...parseManualUrls(manualUrls)
+    ])))
+  }, [urls, manualUrls])
 
   const handleFileUpload = (event) => {
     const uploadedFile = event.target.files[0]
@@ -103,6 +113,24 @@ function App() {
     }
   }
 
+  // Helper to parse URLs from textarea
+  const parseManualUrls = (input) => {
+    if (!input) return []
+    // Split by newlines, commas, or spaces
+    return input
+      .split(/\n|,|\s/)
+      .map(url => url.trim())
+      .filter(url => {
+        if (!url) return false
+        try {
+          new URL(url)
+          return true
+        } catch {
+          return false
+        }
+      })
+  }
+
   const downloadFile = async (url) => {
     const startTime = Date.now()
     try {
@@ -141,8 +169,14 @@ function App() {
     // Track batch download start
     trackUserInteraction('start_batch_download', 'download', useZip ? 'zip' : 'individual')
 
+    // Merge file and manual URLs, remove duplicates
+    const mergedUrls = Array.from(new Set([
+      ...urls,
+      ...parseManualUrls(manualUrls)
+    ]))
+
     // Filter out already downloaded URLs
-    const urlsToDownload = urls.filter(url => !downloadedUrlsRef.current.has(url))
+    const urlsToDownload = mergedUrls.filter(url => !downloadedUrlsRef.current.has(url))
 
     if (urlsToDownload.length > 0) {
       // Create an array of promises for parallel downloads
@@ -233,6 +267,7 @@ function App() {
     setUseZip(false)
     setFileProgress({})
     setDownloadedCount(0)
+    setManualUrls('')
     downloadedUrlsRef.current = new Set()
     progressRef.current = 0
   }
@@ -244,7 +279,7 @@ function App() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             File Downloader
           </Typography>
-          {urls.length > 0 && (
+          {mergedUrls.length > 0 && (
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Tooltip title="Reset Downloads">
                 <IconButton 
@@ -264,16 +299,14 @@ function App() {
               >
                 {downloading 
                   ? `Downloading...${progress ? ` ${progress.toFixed(0)}%` : ''}` 
-                  : `${useZip ? 'Download as ZIP' : 'Download all files'} (${urls.length})`}
+                  : `${useZip ? 'Download as ZIP' : 'Download all files'} (${mergedUrls.length})`}
               </Button>
             </Box>
           )}
         </Toolbar>
       </AppBar>
-
       <Container maxWidth="md">
         <Box sx={{ my: 4 }}>
-
           <Paper sx={{ p: 3, mb: 3 }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
               <input
@@ -297,16 +330,43 @@ function App() {
                   Selected file: {file.name}
                 </Typography>
               )}
+              {/* Manual URL input */}
+              <Box sx={{ width: '100%', mt: 2 }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Or paste file URLs (one per line, comma, or space separated):
+                </Typography>
+                <textarea
+                  value={manualUrls}
+                  onChange={e => setManualUrls(e.target.value)}
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    fontSize: '1rem',
+                    padding: 8,
+                    borderRadius: 4,
+                    border: '1px solid #ccc',
+                    resize: 'vertical',
+                    background: 'var(--mui-palette-background-paper, #fff)',
+                    color: 'var(--mui-palette-text-primary, #222)',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                    transition: 'border-color 0.2s',
+                    outline: 'none',
+                  }}
+                  placeholder="https://example.com/file1.pdf
+https://example.com/file2.jpg"
+                  onFocus={e => (e.target.style.borderColor = '#646cff')}
+                  onBlur={e => (e.target.style.borderColor = '#ccc')}
+                />
+              </Box>
             </Box>
           </Paper>
-
-          {urls.length > 0 && (
+          {mergedUrls.length > 0 && (
             <Paper sx={{ p: 3, mb: 3 }}>
               {
                 !downloading && (
                 <Box>
                     <Typography variant="h6" gutterBottom>
-                    Found URLs ({urls.length})
+                    Found URLs ({mergedUrls.length})
                     </Typography>
                     <FormControlLabel
                         control={
@@ -327,12 +387,12 @@ function App() {
                     {Math.round(progress)}% Complete
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Downloaded {downloadedCount} of {urls.length} files
+                    Downloaded {downloadedCount} of {mergedUrls.length} files
                   </Typography>
                 </Box>
               )}
               <List>
-                {urls.sort((a,b) => {
+                {mergedUrls.sort((a,b) => {
                     // sort the list by progress
                     const progressA = fileProgress[a] || 0
                     const progressB = fileProgress[b] || 0

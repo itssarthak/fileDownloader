@@ -276,7 +276,7 @@ function App() {
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position="static" sx={{ mb: 3 }}>
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" component="div">
             File Downloader
           </Typography>
           {mergedUrls.length > 0 && (

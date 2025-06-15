@@ -440,7 +440,7 @@ https://example.com/file2.jpg"
           )}
         </Box>
         {/* Blog Content Section */}
-        {!file && (
+        {/* {!file && (
             <Paper sx={{ p: 3, mb: 3 }}>
               <Box 
                 sx={{ 
@@ -454,7 +454,7 @@ https://example.com/file2.jpg"
                 dangerouslySetInnerHTML={{ __html: marked(blogContent) }}
               />
             </Paper>
-        )}
+        )} */}
       </Container>
     </Box>
   )

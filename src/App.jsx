@@ -306,13 +306,13 @@ function App() {
         </Toolbar>
       </AppBar>
       <Container maxWidth="md">
-        <Box sx={{ my: 4 }}>
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ my: 4 , minHeight:"70vh", display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center'}}>
+          <Paper sx={{ p: 3, mb: 3, minWidth: "80vw" }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minHeight: '30vh', justifyContent: 'center' }}>
               <input
                 accept=".xlsx,.xls,.csv"
                 style={{ display: 'none' }}
-                id="file-upload"
+                id="file-upload"  
                 type="file"
                 onChange={handleFileUpload}
               />
@@ -331,10 +331,11 @@ function App() {
                 </Typography>
               )}
               {/* Manual URL input */}
-              <Box sx={{ width: '100%', mt: 2 }}>
+              <Box sx={{ width: '90%', mt: 2, justifyContent: 'center', alignItems: 'center' }}>
                 <Typography variant="subtitle1" gutterBottom>
                   Or paste file URLs (one per line, comma, or space separated):
                 </Typography>
+                <br />
                 <textarea
                   value={manualUrls}
                   onChange={e => setManualUrls(e.target.value)}

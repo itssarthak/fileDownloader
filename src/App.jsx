@@ -41,8 +41,10 @@ function App() {
   const [manualUrls, setManualUrls] = useState('')
   const [mergedUrls, setMergedUrls] = useState([])
   const [proxyStatus, setProxyStatus] = useState({}) // Track which URLs are using proxy
+  const [skipDownloaded, setSkipDownloaded] = useState(false) // NEW: Control whether to skip downloaded URLs
   const downloadedUrlsRef = useRef(new Set())
   const progressRef = useRef(0)
+  const fileInputRef = useRef(null) // NEW: Reference to file input for proper reset
 
   useEffect(() => {
     // Initialize Google Analytics
@@ -71,6 +73,10 @@ function App() {
     setUrls([])
     setErrors([])
     setProgress(0)
+    setFileProgress({})
+    setDownloadedCount(0)
+    setProxyStatus({})
+    setManualUrls('')  // FIXED: Also reset manual URLs when uploading new file
     downloadedUrlsRef.current = new Set()
     progressRef.current = 0
 
@@ -257,6 +263,7 @@ function App() {
     setErrors([])
     setFileProgress({})
     setDownloadedCount(0)
+    progressRef.current = 0  // FIXED: Reset progress counter
     const allErrors = []
     const zip = useZip ? new JSZip() : null
     const filenameCount = {}
@@ -270,8 +277,10 @@ function App() {
       ...parseManualUrls(manualUrls)
     ]))
 
-    // Filter out already downloaded URLs
-    const urlsToDownload = mergedUrls.filter(url => !downloadedUrlsRef.current.has(url))
+    // FIXED: Only filter out already downloaded URLs if skipDownloaded is true
+    const urlsToDownload = skipDownloaded 
+      ? mergedUrls.filter(url => !downloadedUrlsRef.current.has(url))
+      : mergedUrls
 
     if (urlsToDownload.length > 0) {
       // Create an array of promises for parallel downloads
@@ -286,7 +295,10 @@ function App() {
               error: result?.error || 'Download failed'
             })
           } else {
-            downloadedUrlsRef.current.add(url)
+            // Only add to downloaded set if not already present
+            if (!downloadedUrlsRef.current.has(url)) {
+              downloadedUrlsRef.current.add(url)
+            }
             setDownloadedCount(prev => prev + 1)
             if (useZip) {
               // Handle duplicate filenames
@@ -325,7 +337,7 @@ function App() {
           setFileProgress(prev => ({ ...prev, [url]: 0 }))
         }
         progressRef.current++
-        setProgress((progressRef.current / urls.length) * 100)
+        setProgress((progressRef.current / urlsToDownload.length) * 100)  // FIXED: Use correct denominator
       })
 
       // Wait for all downloads to complete
@@ -371,8 +383,14 @@ function App() {
     setDownloadedCount(0)
     setManualUrls('')
     setProxyStatus({})
+    setSkipDownloaded(false)  // FIXED: Reset skip downloaded option
     downloadedUrlsRef.current = new Set()
     progressRef.current = 0
+    
+    // FIXED: Properly reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   return (
@@ -417,6 +435,7 @@ function App() {
                 style={{ display: 'none' }}
                 id="file-upload"  
                 type="file"
+                ref={fileInputRef}  
                 onChange={handleFileUpload}
               />
               <label htmlFor="file-upload">
@@ -482,6 +501,18 @@ https://example.com/file2.jpg"
                         }
                         label="Download as ZIP file"
                     />
+                    {downloadedUrlsRef.current.size > 0 && (
+                        <FormControlLabel
+                            control={
+                            <Checkbox
+                                checked={skipDownloaded}
+                                onChange={(e) => setSkipDownloaded(e.target.checked)}
+                                color="primary"
+                            />
+                            }
+                            label="Skip already downloaded files"
+                        />
+                    )}
                 </Box>
               )}
               {downloading && (

@@ -8,8 +8,12 @@
     "build": "vite build",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "test": "jest src/App.basic.test.jsx",
+    "test:watch": "jest --watch src/App.basic.test.jsx",
+    "test:coverage": "jest --coverage src/App.basic.test.jsx",
+    "test:all": "jest",
+    "predev": "echo 'Starting development server...'",
+    "prebuild": "echo 'Building for production...'"
   },
   "dependencies": {
     "@emotion/react": "^11.11.3",

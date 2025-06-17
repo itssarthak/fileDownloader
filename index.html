@@ -2,25 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>File Downloader</title>
-    <base href="/" />
+    <meta name="description" content="Download multiple files from URLs with ease. Upload Excel/CSV files containing URLs or paste URLs manually. Supports bulk downloads, ZIP packaging, and CORS workarounds." />
+    <meta name="keywords" content="file downloader, bulk download, URL download, CSV download, Excel download, batch download" />
+    <title>File Downloader - Bulk Download Files from URLs</title>
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-3EMKW9KYM5"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-
       gtag('config', 'G-3EMKW9KYM5');
     </script>
-    <!-- Google AdSense -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9348686636896657"
-     crossorigin="anonymous"></script>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      console.log('HTML loaded');
+      document.getElementById('root').innerHTML = '<h1>Loading...</h1>';
+    </script>
     <script type="module" src="/src/main.jsx"></script>
-    <script data-name="BMC-Widget" data-cfasync="false" src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js" data-id="sarthakchhabra" data-description="Support me on Buy me a coffee!" data-message="" data-color="rgb(25, 118, 210)" data-position="Right" data-x_margin="18" data-y_margin="18"></script>
+    <script>
+      setTimeout(() => {
+        if (document.getElementById('root').innerHTML === '<h1>Loading...</h1>') {
+          document.getElementById('root').innerHTML = '<h1>React failed to load</h1>';
+        }
+      }, 2000);
+    </script>
   </body>
 </html>

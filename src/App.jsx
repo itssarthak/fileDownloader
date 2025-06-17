@@ -276,11 +276,11 @@ function App() {
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position="static" sx={{ mb: 3 }}>
         <Toolbar>
-          <Typography variant="h6" component="div">
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             File Downloader
           </Typography>
           {mergedUrls.length > 0 && (
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
               <Tooltip title="Reset Downloads">
                 <IconButton 
                   color="inherit" 
@@ -299,7 +299,7 @@ function App() {
               >
                 {downloading 
                   ? `Downloading...${progress ? ` ${progress.toFixed(0)}%` : ''}` 
-                  : `${useZip ? 'Download as ZIP' : 'Download all files'} (${mergedUrls.length})`}
+                  : `${useZip ? 'Download as ZIP' : `Download ${mergedUrls.length === 1 ? 'file' : `${mergedUrls.length} files`}`}`}
               </Button>
             </Box>
           )}

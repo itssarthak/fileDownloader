@@ -40,6 +40,7 @@ function App() {
   const [blogContent, setBlogContent] = useState('')
   const [manualUrls, setManualUrls] = useState('')
   const [mergedUrls, setMergedUrls] = useState([])
+  const [proxyStatus, setProxyStatus] = useState({}) // Track which URLs are using proxy
   const downloadedUrlsRef = useRef(new Set())
   const progressRef = useRef(0)
 
@@ -154,7 +155,39 @@ function App() {
       return { blob: response.data, filename }
     } catch (error) {
       console.error('Download error:', error)
-      // Track failed download
+      
+      // If it's a CORS error, try proxy services automatically
+      if (error.request && !error.response) {
+        console.log('🚫 CORS detected, automatically trying proxy services...')
+        try {
+          // Mark as using proxy
+          setProxyStatus(prev => ({ ...prev, [url]: 'retrying' }))
+          // Reset progress to show proxy attempt
+          setFileProgress(prev => ({ ...prev, [url]: 0 }))
+          
+          const proxyResult = await downloadWithProxy(url, (progress) => {
+            setFileProgress(prev => ({ ...prev, [url]: progress }))
+          })
+          
+          console.log(`🎉 Proxy download successful using: ${proxyResult.usedProxy}`)
+          
+          // Mark as successful with proxy
+          setProxyStatus(prev => ({ ...prev, [url]: `success-${proxyResult.usedProxy}` }))
+          
+          // Track successful proxy download
+          trackDownload(url, true, proxyResult.blob.size, Date.now() - startTime)
+          return proxyResult
+        } catch (proxyError) {
+          console.error('❌ All proxy services failed:', proxyError)
+          // Mark as failed
+          setProxyStatus(prev => ({ ...prev, [url]: 'failed' }))
+          // Track failed download after proxy attempts
+          trackDownload(url, false, 0, Date.now() - startTime)
+          return { error: 'CORS blocked and all proxy services failed - try opening the URL directly in a new tab' }
+        }
+      }
+      
+      // Track failed download for non-CORS errors
       trackDownload(url, false, 0, Date.now() - startTime)
       
       // Return error details for better user feedback
@@ -162,9 +195,6 @@ function App() {
       if (error.response) {
         // Server responded with error status
         errorMessage = `HTTP ${error.response.status}: ${error.response.statusText}`
-      } else if (error.request) {
-        // Request was made but no response received (likely CORS)
-        errorMessage = 'CORS or network error - try opening the URL directly in a new tab'
       } else {
         // Something else happened
         errorMessage = error.message
@@ -173,6 +203,53 @@ function App() {
       return { error: errorMessage }
     }
   }
+
+  // Helper to try downloading via proxy services with progress tracking
+  const downloadWithProxy = async (url, onProgress) => {
+    const proxyServices = [
+      {
+        name: 'AllOrigins',
+        getUrl: (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
+      },
+      {
+        name: 'cors.bridged.cc', 
+        getUrl: (url) => `https://cors.bridged.cc/${url}`
+      },
+      {
+        name: 'ThingProxy',
+        getUrl: (url) => `https://thingproxy.freeboard.io/fetch/${url}`
+      }
+    ];
+
+    for (const proxy of proxyServices) {
+      try {
+        console.log(`🔄 Trying proxy: ${proxy.name} for ${url}`);
+        const proxyUrl = proxy.getUrl(url);
+        
+        const response = await axios.get(proxyUrl, { 
+          responseType: 'blob',
+          timeout: 45000, // Increased timeout for proxy
+          headers: {
+            'Accept': '*/*',
+          },
+          onDownloadProgress: (progressEvent) => {
+            if (onProgress && progressEvent.total) {
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+              onProgress(percentCompleted)
+            }
+          }
+        });
+        
+        console.log(`✅ Success with proxy: ${proxy.name}`);
+        return { blob: response.data, filename: url.split('/').pop(), usedProxy: proxy.name };
+      } catch (error) {
+        console.log(`❌ Failed with proxy ${proxy.name}: ${error.message}`);
+        continue;
+      }
+    }
+    
+    throw new Error('All proxy services failed');
+  };
 
   const handleDownloadAll = async () => {
     const startTime = Date.now()
@@ -293,6 +370,7 @@ function App() {
     setFileProgress({})
     setDownloadedCount(0)
     setManualUrls('')
+    setProxyStatus({})
     downloadedUrlsRef.current = new Set()
     progressRef.current = 0
   }
@@ -417,31 +495,96 @@ https://example.com/file2.jpg"
                   </Typography>
                 </Box>
               )}
-              <List>
+              <List sx={{ 
+                '& .MuiListItem-root': {
+                  borderRadius: 2,
+                  mb: 1,
+                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                  border: '1px solid rgba(0, 0, 0, 0.05)'
+                }
+              }}>
                 {mergedUrls.sort((a,b) => {
                     // sort the list by progress
                     const progressA = fileProgress[a] || 0
                     const progressB = fileProgress[b] || 0
                     return progressB - progressA
                 }).map((url, index) => (
-                  <ListItem key={index}>
+                  <ListItem key={index} sx={{ 
+                    py: 2,
+                    '&:hover': {
+                      backgroundColor: 'rgba(0, 0, 0, 0.04)'
+                    }
+                  }}>
                     <ListItemText 
-                      primary={url}
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                          <Typography 
+                            variant="body1" 
+                            sx={{ 
+                              flex: 1,
+                              wordBreak: 'break-all',
+                              fontSize: '0.9rem'
+                            }}
+                          >
+                            {url}
+                          </Typography>
+                          
+                          {/* Status Icon */}
+                          {proxyStatus[url] === 'retrying' && (
+                            <Tooltip title="Retrying with proxy service" arrow>
+                              <CircularProgress size={16} sx={{ color: '#ff9800' }} />
+                            </Tooltip>
+                          )}
+                          {proxyStatus[url]?.startsWith('success-') && (
+                            <Tooltip title={`Downloaded via ${proxyStatus[url].split('-')[1]} proxy`} arrow>
+                              <Box sx={{ 
+                                width: 8, 
+                                height: 8, 
+                                borderRadius: '50%', 
+                                backgroundColor: '#ff9800',
+                                border: '2px solid #4caf50'
+                              }} />
+                            </Tooltip>
+                          )}
+                          {downloadedUrlsRef.current.has(url) && !proxyStatus[url]?.startsWith('success-') && (
+                            <Tooltip title="Downloaded directly" arrow>
+                              <Box sx={{ 
+                                width: 8, 
+                                height: 8, 
+                                borderRadius: '50%', 
+                                backgroundColor: '#4caf50'
+                              }} />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      }
                       secondary={
                         downloading && (
                           <Box sx={{ width: '100%', mt: 1 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                {proxyStatus[url] === 'retrying' ? 'Downloading via proxy...' : 'Downloading...'}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {fileProgress[url] || 0}%
+                              </Typography>
+                            </Box>
                             <LinearProgress 
                               variant="determinate" 
                               value={fileProgress[url] || 0}
-                              sx={{ height: 6, borderRadius: 3 }}
+                              sx={{ 
+                                height: 6, 
+                                borderRadius: 3,
+                                backgroundColor: 'rgba(0, 0, 0, 0.1)',
+                                '& .MuiLinearProgress-bar': {
+                                  backgroundColor: proxyStatus[url] === 'retrying' ? '#ff9800' : '#1976d2'
+                                }
+                              }}
                             />
                           </Box>
                         )
                       }
                     />
-                    <Typography variant="body2" color="text.secondary">
-                      {fileProgress[url] || 0}%
-                    </Typography>
                   </ListItem>
                 ))} 
               </List>

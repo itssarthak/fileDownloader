@@ -136,6 +136,10 @@ function App() {
     try {
       const response = await axios.get(url, { 
         responseType: 'blob',
+        timeout: 30000, // 30 second timeout
+        headers: {
+          'Accept': '*/*',
+        },
         onDownloadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
           setFileProgress(prev => ({ ...prev, [url]: percentCompleted }))
@@ -152,7 +156,21 @@ function App() {
       console.error('Download error:', error)
       // Track failed download
       trackDownload(url, false, 0, Date.now() - startTime)
-      return null
+      
+      // Return error details for better user feedback
+      let errorMessage = 'Unknown error'
+      if (error.response) {
+        // Server responded with error status
+        errorMessage = `HTTP ${error.response.status}: ${error.response.statusText}`
+      } else if (error.request) {
+        // Request was made but no response received (likely CORS)
+        errorMessage = 'CORS or network error - try opening the URL directly in a new tab'
+      } else {
+        // Something else happened
+        errorMessage = error.message
+      }
+      
+      return { error: errorMessage }
     }
   }
 
@@ -184,8 +202,12 @@ function App() {
         try {
           setFileProgress(prev => ({ ...prev, [url]: 0 }))
           const result = await downloadFile(url)
-          if (!result) {
-            allErrors.push(url)
+          if (!result || result.error) {
+            // Store both URL and error message for better user feedback
+            allErrors.push({
+              url: url,
+              error: result?.error || 'Download failed'
+            })
           } else {
             downloadedUrlsRef.current.add(url)
             setDownloadedCount(prev => prev + 1)
@@ -219,7 +241,10 @@ function App() {
             }
           }
         } catch (error) {
-          allErrors.push(url)
+          allErrors.push({
+            url: url,
+            error: 'Unexpected error during download'
+          })
           setFileProgress(prev => ({ ...prev, [url]: 0 }))
         }
         progressRef.current++
@@ -432,7 +457,29 @@ https://example.com/file2.jpg"
                 {errors.map((error, index) => (
                   <ListItem key={index}>
                     <Alert severity="error" sx={{ width: '100%' }}>
-                      {error}
+                      <Typography variant="body2" component="div">
+                        <strong>URL:</strong> {typeof error === 'string' ? error : error.url}
+                      </Typography>
+                      {typeof error === 'object' && error.error && (
+                        <Typography variant="body2" component="div" sx={{ mt: 1 }}>
+                          <strong>Error:</strong> {error.error}
+                        </Typography>
+                      )}
+                      {typeof error === 'object' && error.error?.includes('CORS') && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="body2" component="div" sx={{ fontStyle: 'italic' }}>
+                            💡 Tip: This file is blocked by CORS restrictions. Try downloading it directly:
+                          </Typography>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            sx={{ mt: 1 }}
+                            onClick={() => window.open(error.url, '_blank')}
+                          >
+                            Open in New Tab
+                          </Button>
+                        </Box>
+                      )}
                     </Alert>
                   </ListItem>
                 ))}

@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://www.filedownloader.in/sitemap.xml
+
+# Disallow crawling of development files
+Disallow: /src/
+Disallow: /node_modules/
+Disallow: /.git/
+Disallow: /.env
+Disallow: /package.json
+Disallow: /package-lock.json
+Disallow: /vite.config.js
+Disallow: /jest.config.cjs
+Disallow: /babel.config.cjs
+Disallow: /eslint.config.js
+
+# Allow important files
+Allow: /favicon.ico
+Allow: /sitemap.xml
+Allow: /robots.txt 

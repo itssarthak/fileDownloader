@@ -1,166 +1,174 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react';
 import { 
-  Box, 
-  Container, 
-  Typography, 
-  Button, 
+  Box,
+  Container,
+  Typography,
   Paper,
-  List,
-  ListItem,
-  ListItemText,
-  CircularProgress,
-  Alert,
   AppBar,
   Toolbar,
-  IconButton,
-  Tooltip,
+  LinearProgress,
   FormControlLabel,
-  Checkbox,
-  LinearProgress
-} from '@mui/material'
-import { CloudUpload, Download, Refresh } from '@mui/icons-material'
-import * as XLSX from 'xlsx'
-import axios from 'axios'
-import JSZip from 'jszip'
-import { marked } from 'marked'
-import { initGA, trackPageView, trackFileUpload, trackUrlExtraction, trackDownload, trackBatchDownload, trackError, trackUserInteraction } from './utils/analytics'
+  Checkbox
+} from '@mui/material';
+import * as XLSX from 'xlsx';
+import axios from 'axios';
+import JSZip from 'jszip';
+import { marked } from 'marked';
+import { initGA, trackPageView, trackFileUpload, trackUrlExtraction, trackDownload, trackBatchDownload, trackError, trackUserInteraction } from './utils/analytics';
+import FileUpload from './components/FileUpload';
+import DownloadControls from './components/DownloadControls';
+import UrlList from './components/UrlList';
 
-// Initialize Google Analytics with environment variable or fallback
-const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID || 'G-3EMKW9KYM5'
+const GA_MEASUREMENT_ID = import.meta.env.VITE_GA_MEASUREMENT_ID;
 
-// Configuration constants
-const MAX_CONCURRENT_DOWNLOADS = 6 // Browser-friendly limit
-const DOWNLOAD_TIMEOUT = 30000 // 30 seconds
-const PROXY_TIMEOUT = 45000 // 45 seconds for proxy
+const MAX_CONCURRENT_DOWNLOADS = 6;
+const DOWNLOAD_TIMEOUT = 30000;
+const PROXY_TIMEOUT = 45000;
 
 function App() {
-  const [file, setFile] = useState(null)
-  const [urls, setUrls] = useState([])
-  const [errors, setErrors] = useState([])
-  const [downloading, setDownloading] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [useZip, setUseZip] = useState(false)
-  const [fileProgress, setFileProgress] = useState({})
-  const [downloadedCount, setDownloadedCount] = useState(0)
-  const [blogContent, setBlogContent] = useState('')
-  const [manualUrls, setManualUrls] = useState('')
-  const [mergedUrls, setMergedUrls] = useState([])
-  const [proxyStatus, setProxyStatus] = useState({}) // Track which URLs are using proxy
-  const [skipDownloaded, setSkipDownloaded] = useState(false)
-  const downloadedUrlsRef = useRef(new Set())
-  const progressRef = useRef(0)
-  const fileInputRef = useRef(null)
-  const createdBlobUrlsRef = useRef(new Set()) // Track blob URLs for cleanup
+  const [file, setFile] = useState(null);
+  const [urls, setUrls] = useState([]);
+  const [errors, setErrors] = useState([]);
+  const [downloading, setDownloading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [useZip, setUseZip] = useState(false);
+  const [fileProgress, setFileProgress] = useState({});
+  const [downloadedCount, setDownloadedCount] = useState(0);
+  const [blogContent, setBlogContent] = useState('');
+  const [manualUrls, setManualUrls] = useState('');
+  const [mergedUrls, setMergedUrls] = useState([]);
+  const [proxyStatus, setProxyStatus] = useState({});
+  const [skipDownloaded, setSkipDownloaded] = useState(false);
+  const downloadedUrlsRef = useRef(new Set());
+  const progressRef = useRef(0);
+  const fileInputRef = useRef(null);
+  const createdBlobUrlsRef = useRef(new Set());
 
   useEffect(() => {
-    // Initialize Google Analytics
-    initGA(GA_MEASUREMENT_ID)
-    // Track initial page view
-    trackPageView(window.location.pathname)
+    if (GA_MEASUREMENT_ID) {
+      initGA(GA_MEASUREMENT_ID);
+      trackPageView(window.location.pathname);
+    }
 
-    // Fetch blog content when component mounts
     fetch('/blog.txt')
       .then(response => response.text())
       .then(text => setBlogContent(text))
-      .catch(error => console.error('Error fetching blog:', error))
+      .catch(error => console.error('Error fetching blog:', error));
 
-    // Cleanup blob URLs on unmount
+    const savedState = JSON.parse(localStorage.getItem('fileDownloaderState'));
+    if (savedState) {
+      setUrls(savedState.urls || []);
+      setManualUrls(savedState.manualUrls || '');
+      downloadedUrlsRef.current = new Set(savedState.downloadedUrls || []);
+    }
+
     return () => {
       createdBlobUrlsRef.current.forEach(url => {
-        window.URL.revokeObjectURL(url)
-      })
-    }
-  }, [])
+        window.URL.revokeObjectURL(url);
+      });
+    };
+  }, []);
 
   useEffect(() => {
-    // Update merged URLs whenever urls or manualUrls change
+    const stateToSave = {
+      urls,
+      manualUrls,
+      downloadedUrls: Array.from(downloadedUrlsRef.current),
+    };
+    localStorage.setItem('fileDownloaderState', JSON.stringify(stateToSave));
+  }, [urls, manualUrls]);
+
+  useEffect(() => {
     setMergedUrls(Array.from(new Set([
       ...urls,  
       ...parseManualUrls(manualUrls)
-    ])))
-  }, [urls, manualUrls])
+    ])));
+  }, [urls, manualUrls]);
 
   const handleFileUpload = (event) => {
-    const uploadedFile = event.target.files[0]
-    setFile(uploadedFile)
-    setUrls([])
-    setErrors([])
-    setProgress(0)
-    setFileProgress({})
-    setDownloadedCount(0)
-    setProxyStatus({})
-    setManualUrls('')
-    downloadedUrlsRef.current = new Set()
-    progressRef.current = 0
+    const uploadedFile = event.target.files[0];
+    setFile(uploadedFile);
+    setUrls([]);
+    setErrors([]);
+    setProgress(0);
+    setFileProgress({});
+    setDownloadedCount(0);
+    setProxyStatus({});
+    setManualUrls('');
+    downloadedUrlsRef.current = new Set();
+    progressRef.current = 0;
 
     if (uploadedFile) {
-      // Track file upload attempt
-      trackFileUpload(uploadedFile.type, uploadedFile.size, true)
+      if (GA_MEASUREMENT_ID) {
+        trackFileUpload(uploadedFile.type, uploadedFile.size, true);
+      }
       
-      const reader = new FileReader()
+      const reader = new FileReader();
       reader.onload = (e) => {
         try {
-          const data = new Uint8Array(e.target.result)
-          const workbook = XLSX.read(data, { type: 'array' })
-          const firstSheet = workbook.Sheets[workbook.SheetNames[0]]
-          const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 })
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
           
-          // Extract URLs from the data and remove duplicates using Set
           const allUrls = jsonData.flat().filter(cell => {
             if (typeof cell === 'string') {
               try {
-                new URL(cell)
-                return true
+                new URL(cell);
+                return true;
               } catch {
-                return false
+                return false;
               }
             }
-            return false
-          })
+            return false;
+          });
           
-          const uniqueUrls = [...new Set(allUrls)]
-          setUrls(uniqueUrls)
+          const uniqueUrls = [...new Set(allUrls)];
+          setUrls(uniqueUrls);
           
-          // Track URL extraction
-          trackUrlExtraction(allUrls.length, uniqueUrls.length)
+          if (GA_MEASUREMENT_ID) {
+            trackUrlExtraction(allUrls.length, uniqueUrls.length);
+          }
         } catch (error) {
-          console.error('File reading error:', error)
-          const errorMessage = 'Error reading file. Please make sure it\'s a valid Excel/CSV file.'
-          setErrors([errorMessage])
-          trackError('file_reading', error.message, 'handleFileUpload')
+          console.error('File reading error:', error);
+          const errorMessage = 'Error reading file. Please make sure it\'s a valid Excel/CSV file.';
+          setErrors([errorMessage]);
+          if (GA_MEASUREMENT_ID) {
+            trackError('file_reading', error.message, 'handleFileUpload');
+          }
         }
-      }
+      };
       
       reader.onerror = () => {
-        const errorMessage = 'Error reading file. The file may be corrupted or in an unsupported format.'
-        setErrors([errorMessage])
-        trackError('file_reader', 'FileReader error', 'handleFileUpload')
-      }
+        const errorMessage = 'Error reading file. The file may be corrupted or in an unsupported format.';
+        setErrors([errorMessage]);
+        if (GA_MEASUREMENT_ID) {
+          trackError('file_reader', 'FileReader error', 'handleFileUpload');
+        }
+      };
       
-      reader.readAsArrayBuffer(uploadedFile)
+      reader.readAsArrayBuffer(uploadedFile);
     }
-  }
+  };
 
-  // Helper to parse URLs from textarea
   const parseManualUrls = (input) => {
-    if (!input) return []
-    // Split by newlines, commas, or spaces
+    if (!input) return [];
     return input
       .split(/\n|,|\s/)
       .map(url => url.trim())
       .filter(url => {
-        if (!url) return false
+        if (!url) return false;
         try {
-          new URL(url)
-          return true
+          new URL(url);
+          return true;
         } catch {
-          return false
+          return false;
         }
-      })
-  }
+      });
+  };
 
   const downloadFile = async (url) => {
-    const startTime = Date.now()
+    const startTime = Date.now();
     try {
       const response = await axios.get(url, { 
         responseType: 'blob',
@@ -170,72 +178,66 @@ function App() {
         },
         onDownloadProgress: (progressEvent) => {
           if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-            setFileProgress(prev => ({ ...prev, [url]: percentCompleted }))
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            setFileProgress(prev => ({ ...prev, [url]: percentCompleted }));
           }
         }
-      })
-      const filename = url.split('/').pop() || 'downloaded_file'
-      const downloadTime = Date.now() - startTime
+      });
+      const filename = url.split('/').pop() || 'downloaded_file';
+      const downloadTime = Date.now() - startTime;
       
-      // Track successful download
-      trackDownload(url, true, response.data.size, downloadTime)
+      if (GA_MEASUREMENT_ID) {
+        trackDownload(url, true, response.data.size, downloadTime);
+      }
       
-      return { blob: response.data, filename }
+      return { blob: response.data, filename };
     } catch (error) {
-      console.error('Download error:', error)
+      console.error('Download error:', error);
       
-      // If it's a CORS error, try proxy services automatically
       if (error.code === 'ERR_NETWORK' || (error.request && !error.response)) {
-        console.log('🚫 CORS detected, automatically trying proxy services...')
+        console.log('🚫 CORS detected, automatically trying proxy services...');
         try {
-          // Mark as using proxy
-          setProxyStatus(prev => ({ ...prev, [url]: 'retrying' }))
-          // Reset progress to show proxy attempt
-          setFileProgress(prev => ({ ...prev, [url]: 0 }))
+          setProxyStatus(prev => ({ ...prev, [url]: 'retrying' }));
+          setFileProgress(prev => ({ ...prev, [url]: 0 }));
           
           const proxyResult = await downloadWithProxy(url, (progress) => {
-            setFileProgress(prev => ({ ...prev, [url]: progress }))
-          })
+            setFileProgress(prev => ({ ...prev, [url]: progress }));
+          });
           
-          console.log(`🎉 Proxy download successful using: ${proxyResult.usedProxy}`)
+          console.log(`🎉 Proxy download successful using: ${proxyResult.usedProxy}`);
+          setProxyStatus(prev => ({ ...prev, [url]: `success-${proxyResult.usedProxy}` }));
           
-          // Mark as successful with proxy
-          setProxyStatus(prev => ({ ...prev, [url]: `success-${proxyResult.usedProxy}` }))
-          
-          // Track successful proxy download
-          trackDownload(url, true, proxyResult.blob.size, Date.now() - startTime)
-          return proxyResult
+          if (GA_MEASUREMENT_ID) {
+            trackDownload(url, true, proxyResult.blob.size, Date.now() - startTime);
+          }
+          return proxyResult;
         } catch (proxyError) {
-          console.error('❌ All proxy services failed:', proxyError)
-          // Mark as failed
-          setProxyStatus(prev => ({ ...prev, [url]: 'failed' }))
-          // Track failed download after proxy attempts
-          trackDownload(url, false, 0, Date.now() - startTime)
-          return { error: 'CORS blocked and all proxy services failed - try opening the URL directly in a new tab' }
+          console.error('❌ All proxy services failed:', proxyError);
+          setProxyStatus(prev => ({ ...prev, [url]: 'failed' }));
+          if (GA_MEASUREMENT_ID) {
+            trackDownload(url, false, 0, Date.now() - startTime);
+          }
+          return { error: 'CORS blocked and all proxy services failed - try opening the URL directly in a new tab' };
         }
       }
       
-      // Track failed download for non-CORS errors
-      trackDownload(url, false, 0, Date.now() - startTime)
-      
-      // Return detailed error information
-      let errorMessage = 'Unknown error'
-      if (error.response) {
-        // Server responded with error status
-        errorMessage = `HTTP ${error.response.status}: ${error.response.statusText}`
-      } else if (error.code === 'ECONNABORTED') {
-        errorMessage = 'Request timeout - file may be too large or server too slow'
-      } else {
-        // Something else happened
-        errorMessage = error.message
+      if (GA_MEASUREMENT_ID) {
+        trackDownload(url, false, 0, Date.now() - startTime);
       }
       
-      return { error: errorMessage }
+      let errorMessage = 'Unknown error';
+      if (error.response) {
+        errorMessage = `HTTP ${error.response.status}: ${error.response.statusText}`;
+      } else if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Request timeout - file may be too large or server too slow';
+      } else {
+        errorMessage = error.message;
+      }
+      
+      return { error: errorMessage };
     }
-  }
+  };
 
-  // Helper to try downloading via proxy services with progress tracking
   const downloadWithProxy = async (url, onProgress) => {
     const proxyServices = [
       {
@@ -250,14 +252,14 @@ function App() {
         name: 'ThingProxy',
         getUrl: (url) => `https://thingproxy.freeboard.io/fetch/${url}`
       }
-    ]
+    ];
 
     for (const proxy of proxyServices) {
       try {
-        console.log(`🔄 Trying proxy: ${proxy.name} for ${url}`)
-        const proxyUrl = proxy.getUrl(url)
+        console.log(`🔄 Trying proxy: ${proxy.name} for ${url}`);
+        const proxyUrl = proxy.getUrl(url);
         
-        const response = await axios.get(proxyUrl, { 
+        const response = await axios.get(proxyUrl, {
           responseType: 'blob',
           timeout: PROXY_TIMEOUT,
           headers: {
@@ -265,469 +267,295 @@ function App() {
           },
           onDownloadProgress: (progressEvent) => {
             if (onProgress && progressEvent.total) {
-              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total)
-              onProgress(percentCompleted)
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              onProgress(percentCompleted);
             }
           }
-        })
+        });
         
-        console.log(`✅ Success with proxy: ${proxy.name}`)
-        return { blob: response.data, filename: url.split('/').pop() || 'downloaded_file', usedProxy: proxy.name }
+        console.log(`✅ Success with proxy: ${proxy.name}`);
+        return { blob: response.data, filename: url.split('/').pop() || 'downloaded_file', usedProxy: proxy.name };
       } catch (error) {
-        console.log(`❌ Failed with proxy ${proxy.name}: ${error.message}`)
-        continue
+        console.log(`❌ Failed with proxy ${proxy.name}: ${error.message}`);
+        continue;
       }
     }
     
-    throw new Error('All proxy services failed')
-  }
+    throw new Error('All proxy services failed');
+  };
 
-  // Helper function to download files in batches to respect browser limits
   const downloadInBatches = async (urlsToDownload, batchSize = MAX_CONCURRENT_DOWNLOADS) => {
-    const allErrors = []
-    const zip = useZip ? new JSZip() : null
-    const filenameCount = {}
+    const allErrors = [];
+    const zip = useZip ? new JSZip() : null;
+    const filenameCount = {};
 
     for (let i = 0; i < urlsToDownload.length; i += batchSize) {
-      const batch = urlsToDownload.slice(i, i + batchSize)
+      const batch = urlsToDownload.slice(i, i + batchSize);
       
       const batchPromises = batch.map(async (url) => {
         try {
-          setFileProgress(prev => ({ ...prev, [url]: 0 }))
-          const result = await downloadFile(url)
+          setFileProgress(prev => ({ ...prev, [url]: 0 }));
+          const result = await downloadFile(url);
           if (!result || result.error) {
             allErrors.push({
               url: url,
               error: result?.error || 'Download failed'
-            })
+            });
           } else {
-            // Only add to downloaded set if not already present
             if (!downloadedUrlsRef.current.has(url)) {
-              downloadedUrlsRef.current.add(url)
+              downloadedUrlsRef.current.add(url);
             }
-            setDownloadedCount(prev => prev + 1)
+            setDownloadedCount(prev => prev + 1);
             
             if (useZip) {
-              // Handle duplicate filenames
-              const originalFilename = result.filename
-              const extension = originalFilename.includes('.') ? originalFilename.split('.').pop() : 'file'
-              const baseName = originalFilename.includes('.') ? originalFilename.slice(0, -(extension.length + 1)) : originalFilename
+              const originalFilename = result.filename;
+              const extension = originalFilename.includes('.') ? originalFilename.split('.').pop() : 'file';
+              const baseName = originalFilename.includes('.') ? originalFilename.slice(0, -(extension.length + 1)) : originalFilename;
               
-              // Initialize or increment counter for this filename
-              filenameCount[originalFilename] = (filenameCount[originalFilename] || 0) + 1
-              const count = filenameCount[originalFilename]
+              filenameCount[originalFilename] = (filenameCount[originalFilename] || 0) + 1;
+              const count = filenameCount[originalFilename];
               
-              // Create unique filename if it's a duplicate
               const uniqueFilename = count > 1 
                 ? `${baseName}_${count}.${extension}`
-                : originalFilename
+                : originalFilename;
               
-              zip.file(uniqueFilename, result.blob)
+              zip.file(uniqueFilename, result.blob);
             } else {
-              // Download individual file
-              const blob = new Blob([result.blob])
-              const downloadUrl = window.URL.createObjectURL(blob)
-              createdBlobUrlsRef.current.add(downloadUrl) // Track for cleanup
+              const blob = new Blob([result.blob]);
+              const downloadUrl = window.URL.createObjectURL(blob);
+              createdBlobUrlsRef.current.add(downloadUrl);
               
-              const link = document.createElement('a')
-              link.href = downloadUrl
-              link.download = result.filename
-              document.body.appendChild(link)
-              link.click()
-              document.body.removeChild(link)
+              const link = document.createElement('a');
+              link.href = downloadUrl;
+              link.download = result.filename;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
               
-              // Clean up blob URL after a delay
               setTimeout(() => {
-                window.URL.revokeObjectURL(downloadUrl)
-                createdBlobUrlsRef.current.delete(downloadUrl)
-              }, 1000)
+                window.URL.revokeObjectURL(downloadUrl);
+                createdBlobUrlsRef.current.delete(downloadUrl);
+              }, 1000);
             }
           }
         } catch (error) {
           allErrors.push({
             url: url,
             error: 'Unexpected error during download'
-          })
-          setFileProgress(prev => ({ ...prev, [url]: 0 }))
+          });
+          setFileProgress(prev => ({ ...prev, [url]: 0 }));
         }
-        progressRef.current++
-        setProgress((progressRef.current / urlsToDownload.length) * 100)
-      })
+        progressRef.current++;
+        setProgress((progressRef.current / urlsToDownload.length) * 100);
+      });
 
-      // Wait for current batch to complete before starting next batch
-      await Promise.all(batchPromises)
+      await Promise.all(batchPromises);
     }
 
-    return { allErrors, zip }
-  }
+    return { allErrors, zip };
+  };
 
   const handleDownloadAll = async () => {
-    const startTime = Date.now()
-    setDownloading(true)
-    setErrors([])
-    setFileProgress({})
-    setDownloadedCount(0)
-    progressRef.current = 0
+    const startTime = Date.now();
+    setDownloading(true);
+    setErrors([]);
+    setFileProgress({});
+    setDownloadedCount(0);
+    progressRef.current = 0;
 
-    // Track batch download start
-    trackUserInteraction('start_batch_download', 'download', useZip ? 'zip' : 'individual')
+    if (GA_MEASUREMENT_ID) {
+      trackUserInteraction('start_batch_download', 'download', useZip ? 'zip' : 'individual');
+    }
 
-    // Merge file and manual URLs, remove duplicates
     const mergedUrls = Array.from(new Set([
       ...urls,
       ...parseManualUrls(manualUrls)
-    ]))
+    ]));
 
-    // Only filter out already downloaded URLs if skipDownloaded is true
     const urlsToDownload = skipDownloaded 
       ? mergedUrls.filter(url => !downloadedUrlsRef.current.has(url))
-      : mergedUrls
+      : mergedUrls;
 
     if (urlsToDownload.length > 0) {
       try {
-        const { allErrors, zip } = await downloadInBatches(urlsToDownload)
+        const { allErrors, zip } = await downloadInBatches(urlsToDownload);
 
-        // If using zip, generate and download the zip file
         if (useZip && zip) {
-          const zipBlob = await zip.generateAsync({ type: 'blob' })
-          const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-          const zipUrl = window.URL.createObjectURL(zipBlob)
-          createdBlobUrlsRef.current.add(zipUrl) // Track for cleanup
+          const zipBlob = await zip.generateAsync({ type: 'blob' });
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const zipUrl = window.URL.createObjectURL(zipBlob);
+          createdBlobUrlsRef.current.add(zipUrl);
           
-          const link = document.createElement('a')
-          link.href = zipUrl
-          link.download = `filedownloader.in_${timestamp}.zip`
-          document.body.appendChild(link)
-          link.click()
-          document.body.removeChild(link)
+          const link = document.createElement('a');
+          link.href = zipUrl;
+          link.download = `filedownloader.in_${timestamp}.zip`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
           
-          // Clean up zip blob URL
           setTimeout(() => {
-            window.URL.revokeObjectURL(zipUrl)
-            createdBlobUrlsRef.current.delete(zipUrl)
-          }, 1000)
+            window.URL.revokeObjectURL(zipUrl);
+            createdBlobUrlsRef.current.delete(zipUrl);
+          }, 1000);
         }
 
-        // After all downloads complete
-        const totalTime = Date.now() - startTime
-        trackBatchDownload(
-          urlsToDownload.length,
-          urlsToDownload.length - allErrors.length,
-          allErrors.length,
-          useZip,
-          totalTime
-        )
+        const totalTime = Date.now() - startTime;
+        if (GA_MEASUREMENT_ID) {
+          trackBatchDownload(
+            urlsToDownload.length,
+            urlsToDownload.length - allErrors.length,
+            allErrors.length,
+            useZip,
+            totalTime
+          );
+        }
 
-        setErrors(allErrors)
+        setErrors(allErrors);
       } catch (error) {
-        console.error('Download batch error:', error)
-        setErrors([{ url: 'Batch download', error: 'Unexpected error during batch download' }])
-        trackError('batch_download', error.message, 'handleDownloadAll')
+        console.error('Download batch error:', error);
+        setErrors([{ url: 'Batch download', error: 'Unexpected error during batch download' }]);
+        if (GA_MEASUREMENT_ID) {
+          trackError('batch_download', error.message, 'handleDownloadAll');
+        }
       }
     }
 
-    setDownloading(false)
-  }
+    setDownloading(false);
+  };
 
   const handleReset = () => {
-    trackUserInteraction('reset', 'action', 'reset_all')
-    
-    // Clean up any existing blob URLs
-    createdBlobUrlsRef.current.forEach(url => {
-      window.URL.revokeObjectURL(url)
-    })
-    createdBlobUrlsRef.current.clear()
-    
-    setProgress(0)
-    setErrors([])
-    setUrls([])
-    setFile(null)
-    setUseZip(false)
-    setFileProgress({})
-    setDownloadedCount(0)
-    setManualUrls('')
-    setProxyStatus({})
-    setSkipDownloaded(false)
-    downloadedUrlsRef.current = new Set()
-    progressRef.current = 0
-    
-    // Properly reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+    if (GA_MEASUREMENT_ID) {
+      trackUserInteraction('reset', 'action', 'reset_all');
     }
-  }
+    
+    createdBlobUrlsRef.current.forEach(url => {
+      window.URL.revokeObjectURL(url);
+    });
+    createdBlobUrlsRef.current.clear();
+    
+    setProgress(0);
+    setErrors([]);
+    setUrls([]);
+    setFile(null);
+    setUseZip(false);
+    setFileProgress({});
+    setDownloadedCount(0);
+    setManualUrls('');
+    setProxyStatus({});
+    setSkipDownloaded(false);
+    downloadedUrlsRef.current = new Set();
+    progressRef.current = 0;
+    localStorage.removeItem('fileDownloaderState');
+    
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   return (
     <Box sx={{ flexGrow: 1 }}>
       <AppBar position="static" sx={{ mb: 3 }}>
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+          <Typography variant="h6" component="div">
             File Downloader
           </Typography>
+          <Box sx={{ flexGrow: 1 }} />
           {mergedUrls.length > 0 && (
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-              <Tooltip title="Reset Downloads">
-                <IconButton 
-                  color="inherit" 
-                  onClick={handleReset}
-                  aria-label="reset downloads"
-                >
-                  <Refresh />
-                </IconButton>
-              </Tooltip>
-              <Button
-                variant="contained"
-                color="secondary"
-                onClick={handleDownloadAll}
-                disabled={downloading}
-                startIcon={downloading ? <CircularProgress size={20} /> : <Download />}
-              >
-                {downloading 
-                  ? `Downloading...${progress ? ` ${progress.toFixed(0)}%` : ''}` 
-                  : `${useZip ? 'Download as ZIP' : `Download ${mergedUrls.length === 1 ? 'File' : `${mergedUrls.length} Files`}`}`}
-              </Button>
-            </Box>
+            <DownloadControls
+              mergedUrls={mergedUrls}
+              handleReset={handleReset}
+              handleDownloadAll={handleDownloadAll}
+              downloading={downloading}
+              progress={progress}
+              useZip={useZip}
+              setUseZip={setUseZip}
+              skipDownloaded={skipDownloaded}
+              setSkipDownloaded={setSkipDownloaded}
+              downloadedUrlsRef={downloadedUrlsRef}
+            />
           )}
         </Toolbar>
       </AppBar>
       <Container maxWidth="md">
         <Box sx={{ my: 4, minHeight: "70vh", display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center' }}>
-          <Paper sx={{ p: 3, mb: 3, minWidth: "80vw" }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, minHeight: '30vh', justifyContent: 'center' }}>
-              <input
-                accept=".xlsx,.xls,.csv"
-                style={{ display: 'none' }}
-                id="file-upload"  
-                type="file"
-                ref={fileInputRef}  
-                onChange={handleFileUpload}
+          <>
+            <Paper sx={{ p: 3, mb: 3, minWidth: "80vw" }}>
+              <FileUpload
+                file={file}
+                handleFileUpload={handleFileUpload}
+                manualUrls={manualUrls}
+                setManualUrls={setManualUrls}
+                fileInputRef={fileInputRef}
               />
-              <label htmlFor="file-upload">
-                <Button
-                  variant="contained"
-                  component="span"
-                  startIcon={<CloudUpload />}
-                >
-                  Upload Excel/CSV File
-                </Button>
-              </label>
-              {file && (
-                <Typography variant="body2" color="text.secondary">
-                  Selected file: {file.name}
-                </Typography>
-              )}
-              {/* Manual URL input */}
-              <Box sx={{ width: '90%', mt: 2, justifyContent: 'center', alignItems: 'center' }}>
-                <Typography variant="subtitle1" gutterBottom>
-                  Or paste file URLs (one per line, comma, or space separated):
-                </Typography>
-                <br />
-                <textarea
-                  value={manualUrls}
-                  onChange={e => setManualUrls(e.target.value)}
-                  rows={4}
-                  style={{
-                    width: '100%',
-                    fontSize: '1rem',
-                    padding: 8,
-                    borderRadius: 4,
-                    border: '1px solid #ccc',
-                    resize: 'vertical',
-                    background: 'var(--mui-palette-background-paper, #fff)',
-                    color: 'var(--mui-palette-text-primary, #222)',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                    transition: 'border-color 0.2s',
-                    outline: 'none',
-                  }}
-                  placeholder="https://example.com/file1.pdf
-https://example.com/file2.jpg"
-                  onFocus={e => (e.target.style.borderColor = '#646cff')}
-                  onBlur={e => (e.target.style.borderColor = '#ccc')}
-                />
-              </Box>
-            </Box>
-          </Paper>
-          {mergedUrls.length > 0 && (
-            <Paper sx={{ p: 3, mb: 3 }}>
-              {
-                !downloading && (
-                <Box>
-                    <Typography variant="h6" gutterBottom>
+            </Paper>
+            {mergedUrls.length > 0 && (
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>
                     Found URLs ({mergedUrls.length})
-                    </Typography>
-                    <FormControlLabel
-                        control={
-                        <Checkbox
-                            checked={useZip}
-                            onChange={(e) => setUseZip(e.target.checked)}
-                            color="primary"
-                        />
-                        }
-                        label="Download as ZIP file"
-                    />
-                    {downloadedUrlsRef.current.size > 0 && (
-                        <FormControlLabel
-                            control={
-                            <Checkbox
-                                checked={skipDownloaded}
-                                onChange={(e) => setSkipDownloaded(e.target.checked)}
-                                color="primary"
-                            />
-                            }
-                            label="Skip already downloaded files"
-                        />
-                    )}
-                </Box>
-              )}
-              {downloading && (
-                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <CircularProgress variant="determinate" value={progress} />
-                  <Typography variant="body2">
-                    {Math.round(progress)}% Complete
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Downloaded {downloadedCount} of {mergedUrls.length} files
-                  </Typography>
-                </Box>
-              )}
-              <List sx={{ 
-                '& .MuiListItem-root': {
-                  borderRadius: 2,
-                  mb: 1,
-                  backgroundColor: 'rgba(0, 0, 0, 0.02)',
-                  border: '1px solid rgba(0, 0, 0, 0.05)'
-                }
-              }}>
-                {mergedUrls.sort((a,b) => {
-                    // sort the list by progress
-                    const progressA = fileProgress[a] || 0
-                    const progressB = fileProgress[b] || 0
-                    return progressB - progressA
-                }).map((url, index) => (
-                  <ListItem key={index} sx={{ 
-                    py: 2,
-                    '&:hover': {
-                      backgroundColor: 'rgba(0, 0, 0, 0.04)'
-                    }
+                  <Box sx={{ 
+                    display: 'flex', 
+                    gap: 3, 
+                    alignItems: 'center',
+                    pl: 1
                   }}>
-                    <ListItemText 
-                      primary={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
-                          <Typography 
-                            variant="body1" 
-                            sx={{ 
-                              flex: 1,
-                              wordBreak: 'break-all',
-                              fontSize: '0.9rem'
-                            }}
-                          >
-                            {url}
-                          </Typography>
-                          
-                          {/* Status Icon */}
-                          {proxyStatus[url] === 'retrying' && (
-                            <Tooltip title="Retrying with proxy service" arrow>
-                              <CircularProgress size={16} sx={{ color: '#ff9800' }} />
-                            </Tooltip>
-                          )}
-                          {proxyStatus[url]?.startsWith('success-') && (
-                            <Tooltip title={`Downloaded via ${proxyStatus[url].split('-')[1]} proxy`} arrow>
-                              <Box sx={{ 
-                                width: 8, 
-                                height: 8, 
-                                borderRadius: '50%', 
-                                backgroundColor: '#ff9800',
-                                border: '2px solid #4caf50'
-                              }} />
-                            </Tooltip>
-                          )}
-                          {downloadedUrlsRef.current.has(url) && !proxyStatus[url]?.startsWith('success-') && (
-                            <Tooltip title="Downloaded directly" arrow>
-                              <Box sx={{ 
-                                width: 8, 
-                                height: 8, 
-                                borderRadius: '50%', 
-                                backgroundColor: '#4caf50'
-                              }} />
-                            </Tooltip>
-                          )}
-                        </Box>
-                      }
-                      secondary={
-                        downloading && (
-                          <Box sx={{ width: '100%', mt: 1 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                              <Typography variant="caption" color="text.secondary">
-                                {proxyStatus[url] === 'retrying' ? 'Downloading via proxy...' : 'Downloading...'}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {fileProgress[url] || 0}%
-                              </Typography>
-                            </Box>
-                            <LinearProgress 
-                              variant="determinate" 
-                              value={fileProgress[url] || 0}
-                              sx={{ 
-                                height: 6, 
-                                borderRadius: 3,
-                                backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                                '& .MuiLinearProgress-bar': {
-                                  backgroundColor: proxyStatus[url] === 'retrying' ? '#ff9800' : '#1976d2'
-                                }
-                              }}
-                            />
-                          </Box>
-                        )
-                      }
+                    <FormControlLabel
+                      control={<Checkbox checked={useZip} onChange={(e) => setUseZip(e.target.checked)} />}
+                      label="Download as ZIP"
                     />
-                  </ListItem>
-                ))} 
-              </List>
-            </Paper>
-          )}
-
-          {errors.length > 0 && (
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" color="error" gutterBottom>
-                Failed Downloads ({errors.length})
-              </Typography>
-              <List>
-                {errors.map((error, index) => (
-                  <ListItem key={index}>
-                    <Alert severity="error" sx={{ width: '100%' }}>
-                      <Typography variant="body2" component="div">
-                        <strong>URL:</strong> {typeof error === 'string' ? error : error.url}
+                    <FormControlLabel
+                      control={<Checkbox checked={skipDownloaded} onChange={(e) => setSkipDownloaded(e.target.checked)} />}
+                      label="Skip Downloaded"
+                    />
+                  </Box>
+                </Box>
+                {downloading && (
+                  <Box sx={{ 
+                    mt: 2, 
+                    p: 2, 
+                    backgroundColor: 'rgba(25, 118, 210, 0.04)',
+                    borderRadius: 2,
+                    border: '1px solid rgba(25, 118, 210, 0.12)'
+                  }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 500, color: '#1976d2' }}>
+                        {Math.round(progress)}% Complete
                       </Typography>
-                      {typeof error === 'object' && error.error && (
-                        <Typography variant="body2" component="div" sx={{ mt: 1 }}>
-                          <strong>Error:</strong> {error.error}
-                        </Typography>
-                      )}
-                      {typeof error === 'object' && error.error?.includes('CORS') && (
-                        <Box sx={{ mt: 1 }}>
-                          <Typography variant="body2" component="div" sx={{ fontStyle: 'italic' }}>
-                            💡 Tip: This file is blocked by CORS restrictions. Try downloading it directly:
-                          </Typography>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            sx={{ mt: 1 }}
-                            onClick={() => window.open(error.url, '_blank')}
-                          >
-                            Open in New Tab
-                          </Button>
-                        </Box>
-                      )}
-                    </Alert>
-                  </ListItem>
-                ))}
-              </List>
-            </Paper>
-          )}
+                      <Typography variant="body2" color="text.secondary">
+                        Downloaded {downloadedCount} of {mergedUrls.length} files
+                      </Typography>
+                    </Box>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={progress}
+                      sx={{ 
+                        height: 8, 
+                        borderRadius: 4,
+                        backgroundColor: 'rgba(25, 118, 210, 0.12)',
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: '#1976d2',
+                          borderRadius: 4
+                        }
+                      }}
+                    />
+                  </Box>
+                )}
+                <UrlList
+                  mergedUrls={mergedUrls}
+                  downloading={downloading}
+                  fileProgress={fileProgress}
+                  proxyStatus={proxyStatus}
+                  downloadedUrlsRef={downloadedUrlsRef}
+                  errors={errors}
+                />
+              </Paper>
+            )}
+          </>
         </Box>
       </Container>
     </Box>
-  )
+  );
 }
 
-export default App
+export default App;

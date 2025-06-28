@@ -1,0 +1,49 @@
+# FileDownloader.in - Free Bulk File Downloader Tool
+# Robots.txt - Optimized for SEO and crawler efficiency
+
+# Allow all crawlers to access the site
+User-agent: *
+Allow: /
+
+# Optimize crawling efficiency
+# Allow key pages for indexing
+Allow: /how-to-bulk-download-files
+Allow: /csv-excel-bulk-download-guide
+Allow: /privacy-policy
+Allow: /terms-of-service
+
+# Allow template downloads
+Allow: /templates/
+
+# Prevent crawling of potential future admin areas
+Disallow: /admin/
+Disallow: /api/
+Disallow: /.env
+Disallow: /config/
+
+# Prevent crawling of development files
+Disallow: /*.log
+Disallow: /node_modules/
+Disallow: /src/
+Disallow: /.git/
+
+# Allow social media crawlers
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+# Optimize crawl rate for better server performance
+Crawl-delay: 1
+
+# Sitemap locations
+Sitemap: https://www.filedownloader.in/sitemap.xml
+
+# Additional information
+# Contact: info@filedownloader.in
+# This site provides a free bulk file downloader tool
+# All file processing happens in the user's browser 

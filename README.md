@@ -204,6 +204,30 @@ npm test
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+### 🤖 AI Tool Development Guidelines
+
+When using AI tools (ChatGPT, Claude, GitHub Copilot, etc.) to contribute to this project:
+
+#### Required Documentation Review
+- **📖 Read the Web Documentation**: Always review the live application at [https://www.filedownloader.in/](https://www.filedownloader.in/) to understand user-facing functionality
+- **📝 Study the Codebase**: Examine the component architecture, especially the recent refactoring into modular components
+- **🔍 Review Technical Documentation**: Check `WEBAPP_DOCUMENTATION.md` for detailed technical specifications
+- **🧪 Test Functionality**: Use browser testing tools to verify changes work as expected
+
+#### Best Practices for AI-Assisted Development
+- **Context First**: Provide AI tools with complete context including both code AND web documentation
+- **Component Architecture**: Understand the separation between `FileUpload`, `DownloadControls`, `ErrorDisplay`, and `UrlList` components
+- **User Experience**: Test all changes in the browser to ensure UX remains intuitive
+- **Error Handling**: Pay special attention to CORS handling and proxy fallback mechanisms
+- **Performance**: Maintain the concurrent download limits and progress tracking functionality
+
+#### Quality Assurance
+- **Browser Testing**: Test in multiple browsers (Chrome, Firefox, Safari, Edge)
+- **Functionality Verification**: Verify all features work: CSV upload, manual input, ZIP downloads, error handling
+- **Code Review**: Ensure AI-generated code follows React best practices and project conventions
+
+> **💡 Important**: AI tools work best when they understand both the technical implementation AND the user experience. Always combine codebase analysis with hands-on testing of the web application.
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

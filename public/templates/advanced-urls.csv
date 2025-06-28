@@ -1,0 +1,8 @@
+URL,Category,Description,File_Type,Priority
+https://sample-files.com/zip/10/pdf/sample1.pdf,Documents,Sample PDF Document,PDF,High
+https://sample-files.com/zip/10/jpg/sample1.jpg,Images,Sample JPEG Image,Image,Medium
+https://sample-files.com/zip/10/mp4/sample1.mp4,Videos,Sample MP4 Video,Video,High
+https://sample-files.com/zip/10/docx/sample1.docx,Documents,Sample Word Document,Document,Medium
+https://sample-files.com/zip/10/xlsx/sample1.xlsx,Spreadsheets,Sample Excel File,Spreadsheet,Low
+https://httpbin.org/json,API_Data,Sample JSON Response,JSON,Medium
+https://jsonplaceholder.typicode.com/posts/1,API_Data,Test API Endpoint,JSON,Low 

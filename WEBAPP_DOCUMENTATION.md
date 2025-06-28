@@ -18,16 +18,24 @@ The File Downloader is a React-based web application that enables users to bulk 
 - **Progress Tracking**: Real-time progress indication for each file and overall batch
 - **Skip Downloaded**: Option to skip files that have already been downloaded in the current session
 
-### 3. Error Handling & CORS Workaround
+### 3. Advanced Error Handling & CORS Workaround
+- **Unified Error Display**: Errors displayed inline with each URL (no separate error section)
 - **CORS Detection**: Automatically detects CORS-blocked requests
 - **Proxy Fallback**: Uses multiple proxy services (AllOrigins, cors.bridged.cc, ThingProxy) as fallbacks
-- **Error Reporting**: Detailed error messages with actionable suggestions
-- **Direct Link Option**: Provides "Open in New Tab" option for failed downloads
+- **Smart Error Categorization**: Different error types (HTTP, network, CORS) with specific handling
+- **Inline Error Details**: Error messages contained within each URL row for immediate context
+- **Actionable Error Messages**: Detailed error information with helpful suggestions
+- **CORS-Specific Help**: Special handling for CORS errors with "Open in New Tab" option
+- **Visual Error Indicators**: Color-coded status indicators and contained error styling
 
-### 4. User Experience Features
+### 4. Enhanced User Experience Features
 - **Material-UI Interface**: Modern, responsive design using Material-UI components
-- **Real-time Feedback**: Live progress indicators and status updates
-- **Visual Status Indicators**: Color-coded status indicators for different download states
+- **Improved Progress Indicators**: Sleek linear progress bars replacing circular indicators for better UI consistency
+- **Optimized Layout Spacing**: Professional spacing between UI elements, especially checkbox positioning
+- **Real-time Feedback**: Live progress indicators and status updates for individual files and batch operations
+- **Unified Visual Status**: Color-coded status indicators integrated directly with URL listings
+- **Smart URL Sorting**: Automatic reordering with completed downloads first, then errors, then in-progress
+- **Contained Error Design**: Error messages properly contained within their respective URL rows
 - **Filename Deduplication**: Automatic handling of duplicate filenames in ZIP archives
 - **Buy Me a Coffee Integration**: Floating support widget for user donations and project sustainability
 
@@ -67,9 +75,94 @@ The File Downloader is a React-based web application that enables users to bulk 
 ```
 
 ### Component Architecture
-- **Single Page Application**: Main functionality contained in `App.jsx`
-- **Utility Functions**: Analytics tracking in `src/utils/analytics.js`
+The application follows a modular component architecture for improved maintainability and reusability:
+
+#### Core Components
+- **App.jsx**: Main application orchestrator, handles state management and business logic
+- **FileUpload.jsx**: Handles file upload and manual URL input functionality  
+- **DownloadControls.jsx**: Manages download buttons and settings in the header
+- **UrlList.jsx**: Displays URL list with unified success/error states and progress tracking
+
+#### Component Hierarchy
+```
+App.jsx (Main Container)
+├── FileUpload.jsx (File upload + manual URL input)
+├── DownloadControls.jsx (Header controls)
+└── UrlList.jsx (URL display with inline error handling)
+```
+
+#### Utility Functions
+- **src/utils/analytics.js**: Google Analytics tracking and event management
+
+#### Design Principles
+- **Single Responsibility**: Each component has a focused, specific purpose
+- **Props-Based Communication**: Clean data flow between components via props
+- **Reusable Components**: Modular design enables easy testing and maintenance
 - **Responsive Design**: Mobile-friendly layout with flexible containers
+
+#### Component Details
+
+##### FileUpload.jsx (68 lines)
+**Purpose**: Handles all URL input methods
+**Key Features**:
+- File upload button with Excel/CSV support
+- Hidden file input with proper file type restrictions  
+- Manual URL textarea with smart parsing
+- Real-time URL validation and duplicate removal
+- Responsive design with proper focus states
+
+**Props Interface**:
+```javascript
+{
+  file: File | null,
+  handleFileUpload: (event) => void,
+  manualUrls: string,
+  setManualUrls: (urls: string) => void,
+  fileInputRef: React.RefObject
+}
+```
+
+##### DownloadControls.jsx (39 lines)  
+**Purpose**: Manages download actions and controls in the header
+**Key Features**:
+- Dynamic download button text based on context
+- Progress-aware button states during downloads
+- Reset functionality with icon tooltip
+- Download progress display with percentage
+
+**Props Interface**:
+```javascript
+{
+  mergedUrls: string[],
+  handleReset: () => void,
+  handleDownloadAll: () => void,
+  downloading: boolean,
+  progress: number,
+  useZip: boolean
+}
+```
+
+##### UrlList.jsx (215 lines)
+**Purpose**: Advanced URL display with integrated error handling
+**Key Features**:
+- Unified error display (no separate error section)
+- Real-time progress tracking for individual files
+- Smart sorting (completed → errors → in-progress)
+- Inline error messages with CORS-specific help
+- Visual status indicators (success, error, downloading)
+- Contained error styling that doesn't break row layout
+
+**Props Interface**:
+```javascript
+{
+  mergedUrls: string[],
+  downloading: boolean,
+  fileProgress: object,
+  proxyStatus: object,
+  downloadedUrlsRef: React.MutableRefObject,
+  errors: array
+}
+```
 
 ### Third-Party Integrations
 - **Buy Me a Coffee Widget**: 
@@ -196,9 +289,31 @@ When direct download fails due to CORS restrictions, the app automatically tries
 - Local processing of uploaded files
 - Downloads handled entirely client-side
 
+### Known Security Considerations
+
+#### xlsx Dependency (High Severity)
+**Issue**: The xlsx library has known prototype pollution and ReDoS vulnerabilities
+**Mitigation**: 
+- Risk is limited since processing occurs client-side only
+- No server-side exposure or data persistence
+- User-uploaded files are processed locally in browser sandbox
+- No external file processing or untrusted input from servers
+
+**Monitoring**: Actively monitoring for xlsx security updates and alternative libraries
+
+#### Development Dependencies (Moderate Severity)
+**Issue**: esbuild/vite have development server vulnerabilities
+**Mitigation**: 
+- Only affects development environment, not production builds
+- Production builds are static files with no server vulnerabilities
+- Development server should only be used in trusted environments
+
+**Status**: Updates available but may introduce breaking changes - evaluating compatibility
+
 ## Development & Testing
 
 ### Available Scripts
+- `npm start`: Development server (alias for `npm run dev`)
 - `npm run dev`: Development server
 - `npm run build`: Production build
 - `npm run test`: Run test suite

@@ -104,18 +104,7 @@
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      console.log('HTML loaded');
-      document.getElementById('root').innerHTML = '<h1>Loading...</h1>';
-    </script>
     <script type="module" src="/src/main.jsx"></script>
-    <script>
-      setTimeout(() => {
-        if (document.getElementById('root').innerHTML === '<h1>Loading...</h1>') {
-          document.getElementById('root').innerHTML = '<h1>React failed to load</h1>';
-        }
-      }, 2000);
-    </script>
     <!-- Buy Me a Coffee Widget -->
     <script data-name="BMC-Widget" data-cfasync="false" src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js" data-id="sarthakchhabra" data-description="Support me on Buy me a coffee!" data-message="" data-color="#1976d2" data-position="Right" data-x_margin="18" data-y_margin="18"></script>
   </body>
